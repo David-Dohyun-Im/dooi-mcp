@@ -6,6 +6,8 @@ import { ListInputSchema, ListOutputSchema, type ListInput, type ListOutput } fr
 import { createError, ErrorCode } from '../../core/errors.js';
 import { logger } from '../../core/logger.js';
 
+// Interface removed - no longer using hardcoded categorization
+
 export async function handleList(args: unknown): Promise<ListOutput> {
   // Validate input
   const input = ListInputSchema.parse(args);
@@ -41,7 +43,7 @@ export async function handleList(args: unknown): Promise<ListOutput> {
       );
     }
     
-    // Parse the output to extract items
+    // Parse the output to extract items with enhanced metadata
     const items = parseListOutput(result.stdout);
     
     logger.debug('Successfully listed items', { count: items.length });
@@ -69,13 +71,34 @@ export async function handleList(args: unknown): Promise<ListOutput> {
   }
 }
 
-function parseListOutput(stdout: string): Array<{ id: string; type: 'template' | 'component'; title: string; description: string }> {
-  const items: Array<{ id: string; type: 'template' | 'component'; title: string; description: string }> = [];
+// Hardcoded categorization function removed - LLM will now make decisions based on tags and descriptions
+
+function parseListOutput(stdout: string): Array<{ 
+  id: string; 
+  type: 'template' | 'component'; 
+  title: string; 
+  description: string;
+  tags?: string[];
+  category?: string;
+  complexity?: string;
+}> {
+  const items: Array<{ 
+    id: string; 
+    type: 'template' | 'component'; 
+    title: string; 
+    description: string;
+    tags?: string[];
+    category?: string;
+    complexity?: string;
+  }> = [];
   
   const lines = stdout.split('\n');
   let currentSection = '';
+  let currentCategory = '';
   
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
     const trimmed = line.trim();
     
     // Detect sections
@@ -94,14 +117,48 @@ function parseListOutput(stdout: string): Array<{ id: string; type: 'template' |
       continue;
     }
     
-    // Parse component items (• Cards/ShuffleGridDemo)
+    // Detect category headers (Cards:, Hero:, ui:)
+    if (currentSection === 'components' && trimmed.endsWith(':')) {
+      currentCategory = trimmed.replace(':', '').trim();
+      continue;
+    }
+    
+    // Parse component items with enhanced metadata
     if (currentSection === 'components' && trimmed.startsWith('• ')) {
-      const id = trimmed.substring(2).trim(); // Remove "• "
+      const componentText = trimmed.substring(2).trim(); // Remove "• "
+      const colonIndex = componentText.indexOf(':');
+      
+      let id = '';
+      let description = 'Component from dooi-ui';
+      let tags: string[] = [];
+      
+      if (colonIndex > 0) {
+        id = componentText.substring(0, colonIndex).trim();
+        description = componentText.substring(colonIndex + 1).trim();
+      } else {
+        id = componentText;
+      }
+      
+      // Look for tags in the next line
+      if (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        if (nextLine) {
+          const nextLineTrimmed = nextLine.trim();
+          if (nextLineTrimmed.startsWith('Tags:')) {
+            const tagsText = nextLineTrimmed.substring(5).trim(); // Remove "Tags: "
+            tags = tagsText.split(',').map(tag => tag.trim());
+            i++; // Skip the tags line
+          }
+        }
+      }
+      
       items.push({
         id,
         type: 'component',
         title: id,
-        description: 'Component from dooi-ui'
+        description,
+        tags: tags.length > 0 ? tags : undefined,
+        category: currentCategory
       });
       continue;
     }

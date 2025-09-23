@@ -17,7 +17,10 @@ export const ListOutputSchema = z.object({
     id: z.string(),
     type: z.enum(['template', 'component']),
     title: z.string(),
-    description: z.string()
+    description: z.string(),
+    tags: z.array(z.string()).optional(),
+    category: z.string().optional(),
+    complexity: z.string().optional()
   })),
   raw: z.object({
     stdout: z.string(),
