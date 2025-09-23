@@ -3,9 +3,18 @@
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { 
+  CallToolRequestSchema, 
+  ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema
+} from '@modelcontextprotocol/sdk/types.js';
 import { DooiTransport } from './adapters/mcp/transport.js';
 import { handleToolCall, tools } from './capabilities/tools/index.js';
+import { getDooiResources, getResourceContent } from './capabilities/resources/index.js';
+import { getDooiPrompts, executePrompt } from './capabilities/prompts/index.js';
 import { logger } from './core/logger.js';
 import { createError, ErrorCode } from './core/errors.js';
 
@@ -17,7 +26,9 @@ const server = new Server(
   },
   {
     capabilities: {
-      tools: {}
+      tools: {},
+      resources: {},
+      prompts: {}
     }
   }
 );
@@ -79,6 +90,115 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       ],
       isError: true
+    };
+  }
+});
+
+// Register resources
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+  logger.debug('Listing available resources');
+  try {
+    const resources = await getDooiResources();
+    return { resources };
+  } catch (error) {
+    logger.error('Failed to list resources', error);
+    return { resources: [] };
+  }
+});
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  const { uri } = request.params;
+  
+  try {
+    logger.debug(`Reading resource: ${uri}`);
+    const resource = await getResourceContent(uri);
+    
+    if (!resource) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              error: true,
+              message: `Resource not found: ${uri}`
+            }, null, 2)
+          }
+        ],
+        isError: true
+      };
+    }
+    
+    return {
+      contents: [
+        {
+          uri: resource.uri,
+          mimeType: resource.mimeType,
+          text: resource.content || ''
+        }
+      ]
+    };
+  } catch (error) {
+    logger.error(`Failed to read resource: ${uri}`, error);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            error: true,
+            message: `Failed to read resource: ${uri}`,
+            details: error instanceof Error ? error.message : String(error)
+          }, null, 2)
+        }
+      ],
+      isError: true
+    };
+  }
+});
+
+// Register prompts
+server.setRequestHandler(ListPromptsRequestSchema, async () => {
+  logger.debug('Listing available prompts');
+  try {
+    const prompts = getDooiPrompts();
+    return { prompts };
+  } catch (error) {
+    logger.error('Failed to list prompts', error);
+    return { prompts: [] };
+  }
+});
+
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+  
+  try {
+    logger.debug(`Getting prompt: ${name}`, args);
+    const content = await executePrompt(name, args || {});
+    
+    return {
+      description: `Execute the ${name} prompt`,
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: content
+          }
+        }
+      ]
+    };
+  } catch (error) {
+    logger.error(`Failed to get prompt: ${name}`, error);
+    return {
+      description: `Error executing ${name} prompt`,
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Error executing prompt: ${error instanceof Error ? error.message : String(error)}`
+          }
+        }
+      ]
     };
   }
 });

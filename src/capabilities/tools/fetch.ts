@@ -6,8 +6,8 @@ import { FetchInputSchema, type FetchInput, type FetchOutput } from '../../adapt
 import { createError, ErrorCode } from '../../core/errors.js';
 import { logger } from '../../core/logger.js';
 import { randomUUID } from 'crypto';
-import { mkdtemp, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { mkdtemp, writeFile, mkdir } from 'fs/promises';
+import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { glob } from 'glob';
 
@@ -56,25 +56,62 @@ export async function handleFetch(args: unknown): Promise<FetchOutput> {
         throw createError(ErrorCode.CLI_NOT_FOUND);
       }
       
-      throw createError(ErrorCode.FETCH_FAILED, {
-        id: input.id,
-        exitCode: result.exitCode,
-        stderr: result.stderr
-      });
+      throw createError(ErrorCode.FETCH_FAILED, 
+        `Failed to fetch ${input.id}`,
+        {
+          id: input.id,
+          exitCode: result.exitCode, 
+          stderr: result.stderr
+        }
+      );
     }
     
-    // Get list of files in staging directory
-    const files = await glob('**/*', {
-      cwd: stageDir,
-      dot: true,
-      nodir: true
-    });
+    // Create files in staging directory from the code block
+    const meta = parseMetadata(input.id, result.stdout);
+    const files: string[] = [];
+    
+    if (meta.codeBlock) {
+      // Create component file based on the ID
+      const componentPath = getComponentPath(input.id);
+      const fullPath = join(stageDir, componentPath);
+      
+      // Ensure directory exists
+      await mkdir(dirname(fullPath), { recursive: true });
+      
+      // Write the component file
+      await writeFile(fullPath, meta.codeBlock, 'utf8');
+      files.push(componentPath);
+      
+      // Create a package.json if dependencies exist
+      if (meta.dependencies && meta.dependencies.length > 0) {
+        const packageJson = {
+          name: input.id.replace('/', '-'),
+          version: '1.0.0',
+          dependencies: meta.dependencies.reduce((acc, dep) => {
+            acc[dep] = 'latest';
+            return acc;
+          }, {} as Record<string, string>),
+          peerDependencies: meta.peerDependencies?.reduce((acc, dep) => {
+            acc[dep] = '*';
+            return acc;
+          }, {} as Record<string, string>) || {}
+        };
+        
+        const packagePath = join(stageDir, 'package.json');
+        await writeFile(packagePath, JSON.stringify(packageJson, null, 2), 'utf8');
+        files.push('package.json');
+      }
+      
+      // Create a README if description exists
+      if (meta.description) {
+        const readmePath = join(stageDir, 'README.md');
+        const readmeContent = `# ${meta.title || input.id}\n\n${meta.description}\n\n## Installation\n\n\`\`\`bash\nnpm install\n\`\`\`\n\n## Usage\n\nImport and use the component in your project.\n`;
+        await writeFile(readmePath, readmeContent, 'utf8');
+        files.push('README.md');
+      }
+    }
     
     logger.debug('Found files in staging directory', { count: files.length });
-    
-    // Parse metadata from stdout
-    const meta = parseMetadata(input.id, result.stdout);
-    
     logger.debug('Successfully fetched item', { id: input.id, files: files.length });
     
     return {
@@ -94,9 +131,12 @@ export async function handleFetch(args: unknown): Promise<FetchOutput> {
     }
     
     logger.error('Unexpected error in dooi.fetch', error);
-    throw createError(ErrorCode.INTERNAL_ERROR, {
-      originalError: error instanceof Error ? error.message : String(error)
-    });
+    throw createError(ErrorCode.INTERNAL_ERROR, 
+      'Unexpected error in dooi.fetch',
+      {
+        originalError: error instanceof Error ? error.message : String(error)
+      }
+    );
   }
 }
 
@@ -201,4 +241,36 @@ function parseMetadata(id: string, stdout: string): {
   }
   
   return meta;
+}
+
+/**
+ * Generate appropriate file path for a component based on its ID
+ */
+function getComponentPath(id: string): string {
+  // Handle different component ID patterns
+  if (id.startsWith('ui/')) {
+    // UI components go to components/ui/
+    return `components/ui/${id.substring(3)}.tsx`;
+  } else if (id.includes('/')) {
+    // Components with category go to appropriate directory
+    const parts = id.split('/');
+    const category = parts[0]!.toLowerCase();
+    const name = parts[1]!;
+    
+    switch (category) {
+      case 'hero':
+        return `components/hero/${name}.tsx`;
+      case 'cards':
+        return `components/cards/${name}.tsx`;
+      case 'forms':
+        return `components/forms/${name}.tsx`;
+      case 'layout':
+        return `components/layout/${name}.tsx`;
+      default:
+        return `components/${category}/${name}.tsx`;
+    }
+  } else {
+    // Simple component names go to components/
+    return `components/${id}.tsx`;
+  }
 }

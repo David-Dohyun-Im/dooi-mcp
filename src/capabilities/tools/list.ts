@@ -32,10 +32,13 @@ export async function handleList(args: unknown): Promise<ListOutput> {
         throw createError(ErrorCode.CLI_NOT_FOUND);
       }
       
-      throw createError(ErrorCode.LIST_UNAVAILABLE, {
-        exitCode: result.exitCode,
-        stderr: result.stderr
-      });
+      throw createError(ErrorCode.LIST_UNAVAILABLE, 
+        'Unable to list available templates/components',
+        {
+          exitCode: result.exitCode,
+          stderr: result.stderr
+        }
+      );
     }
     
     // Parse the output to extract items
@@ -57,9 +60,12 @@ export async function handleList(args: unknown): Promise<ListOutput> {
     }
     
     logger.error('Unexpected error in dooi.list', error);
-    throw createError(ErrorCode.INTERNAL_ERROR, {
-      originalError: error instanceof Error ? error.message : String(error)
-    });
+    throw createError(ErrorCode.INTERNAL_ERROR, 
+      'Unexpected error in dooi.list',
+      {
+        originalError: error instanceof Error ? error.message : String(error)
+      }
+    );
   }
 }
 

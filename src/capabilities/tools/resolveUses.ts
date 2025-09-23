@@ -28,7 +28,7 @@ export async function handleResolveUses(args: unknown): Promise<ResolveUsesOutpu
     }
     
     logger.error('Unexpected error in dooi.resolve.uses', error);
-    throw createError(ErrorCode.INTERNAL_ERROR, {
+    throw createError(ErrorCode.INTERNAL_ERROR, "Unexpected error", {
       originalError: error instanceof Error ? error.message : String(error)
     });
   }

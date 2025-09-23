@@ -28,7 +28,7 @@ export async function handleFetchBatch(args: unknown): Promise<FetchBatchOutput>
     }
     
     logger.error('Unexpected error in dooi.fetchBatch', error);
-    throw createError(ErrorCode.INTERNAL_ERROR, {
+    throw createError(ErrorCode.INTERNAL_ERROR, "Unexpected error", {
       originalError: error instanceof Error ? error.message : String(error)
     });
   }

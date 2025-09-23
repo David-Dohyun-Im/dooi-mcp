@@ -133,13 +133,13 @@ export const actionableGuidance: Record<ErrorCode, string> = {
 
 export function createError(
   code: ErrorCode,
-  details?: Record<string, unknown>,
-  customMessage?: string
+  message?: string,
+  details?: Record<string, unknown>
 ): DooiError {
-  const message = customMessage || errorMessages[code];
+  const finalMessage = message || errorMessages[code];
   const actionable = actionableGuidance[code];
   
-  return new DooiError(code, message, details, actionable);
+  return new DooiError(code, finalMessage, details, actionable);
 }
 
 export function isDooiError(error: unknown): error is DooiError {
