@@ -196,6 +196,24 @@ function parseMetadata(id: string, stdout: string): {
         continue;
       }
       
+      // Look for uses components
+      if (trimmed.includes('Uses components:')) {
+        // This line indicates the start of the uses components list
+        continue;
+      }
+      
+      // Look for component bullet points (• ui/fluid-blob)
+      if (trimmed.startsWith('•')) {
+        const componentId = trimmed.substring(1).trim();
+        if (componentId && !meta.uses) {
+          meta.uses = [];
+        }
+        if (componentId && meta.uses) {
+          meta.uses.push(componentId);
+        }
+        continue;
+      }
+      
       // Look for code block start
       if (trimmed.includes('Component Code:') || trimmed.includes('Template Code:')) {
         inCodeBlock = true;

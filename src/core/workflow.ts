@@ -1,5 +1,5 @@
 /**
- * Workflow orchestration engine for dooi operations
+ * Workflow orchestration engine for dooi operations - Fixed version
  */
 
 import { logger } from './logger.js';
@@ -48,7 +48,6 @@ export interface WorkflowResult {
     };
     installDeps?: {
       success: boolean;
-      pm?: string;
       installed?: string[];
       error?: string;
     };
@@ -61,9 +60,35 @@ export interface WorkflowResult {
   };
 }
 
-/**
- * Execute a complete workflow for applying a component or template
- */
+export function generateBrandEditPlan(brand: string): Record<string, any> {
+  return {
+    include: ['**/*.tsx', '**/*.ts', '**/*.jsx', '**/*.js', '**/*.md', '**/*.json'],
+    replacements: [
+      {
+        find: 'Brand',
+        replaceWith: brand
+      },
+      {
+        find: 'BRAND',
+        replaceWith: brand.toUpperCase()
+      },
+      {
+        find: 'brand',
+        replaceWith: brand.toLowerCase()
+      }
+    ]
+  };
+}
+
+export function validateWorkflowOptions(options: WorkflowOptions): void {
+  if (!options.id) {
+    throw createError(ErrorCode.INVALID_INPUT, 'ID is required');
+  }
+  if (!options.destRoot) {
+    throw createError(ErrorCode.INVALID_INPUT, 'Destination root is required');
+  }
+}
+
 export async function executeWorkflow(options: WorkflowOptions): Promise<WorkflowResult> {
   const { id, destRoot, brand, pathStrategy, pathMap, editPlan, autoDeps = true, dryRun = false } = options;
   
@@ -98,7 +123,8 @@ export async function executeWorkflow(options: WorkflowOptions): Promise<Workflo
       logger.debug('Fetch completed successfully', { 
         stageDir: fetchResult.stageDir, 
         files: fetchResult.files.length,
-        dependencies: fetchResult.meta.dependencies?.length || 0
+        dependencies: fetchResult.meta.dependencies?.length || 0,
+        uses: fetchResult.meta.uses?.length || 0
       });
       
     } catch (error) {
@@ -114,61 +140,150 @@ export async function executeWorkflow(options: WorkflowOptions): Promise<Workflo
       return result; // Cannot continue without fetch
     }
     
-    // Step 2: Install files
+    // Step 2: Install files (handle templates that reference components)
     logger.debug('Workflow Step 2: Installing files');
     result.summary.totalSteps++;
     
     try {
-      const installOptions: any = {
-        stageDir: result.steps.fetch.stageDir,
-        destRoot,
-        dryRun
-      };
+      const fetchMeta = result.steps.fetch.meta;
+      const usesComponents = fetchMeta?.uses || [];
       
-      // Apply path mapping strategy
-      if (pathStrategy || pathMap) {
-        if (pathMap) {
-          installOptions.pathMap = pathMap;
-        } else if (pathStrategy === 'next-app') {
-          // Use Next.js App Router path mapping
-          installOptions.pathMap = {
-            'components/': 'src/components/',
-            'ui/': 'src/components/ui/',
-            'lib/': 'src/lib/',
-            'hooks/': 'src/hooks/',
-            'utils/': 'src/utils/',
-            'types/': 'src/types/',
-            'public/': 'public/',
-            'assets/': 'public/assets/'
-          };
-        } else if (pathStrategy === 'vite-react') {
-          // Use Vite React path mapping
-          installOptions.pathMap = {
-            'components/': 'src/components/',
-            'ui/': 'src/components/ui/',
-            'lib/': 'src/lib/',
-            'hooks/': 'src/hooks/',
-            'utils/': 'src/utils/',
-            'types/': 'src/types/',
-            'public/': 'public/',
-            'assets/': 'src/assets/'
-          };
+      if (usesComponents.length > 0) {
+        // This is a template that uses other components - fetch and install each component
+        logger.debug('Template uses components, fetching each component', { usesComponents });
+        
+        const allInstalledFiles = [];
+        const allSkippedFiles = [];
+        const allOverwrittenFiles = [];
+        const allRenamedFiles = [];
+        
+        for (const componentId of usesComponents) {
+          logger.debug(`Fetching component: ${componentId}`);
+          
+          try {
+            // Fetch the component
+            const componentFetchResult = await handleFetch({ id: componentId });
+            
+            // Install the component
+            const installOptions: any = {
+              stageDir: componentFetchResult.stageDir,
+              destRoot,
+              dryRun
+            };
+            
+            // Apply path mapping strategy
+            if (pathStrategy || pathMap) {
+              if (pathMap) {
+                installOptions.pathMap = pathMap;
+              } else if (pathStrategy === 'next-app') {
+                // Use Next.js App Router path mapping
+                installOptions.pathMap = {
+                  'components/': 'src/components/',
+                  'ui/': 'src/components/ui/',
+                  'lib/': 'src/lib/',
+                  'hooks/': 'src/hooks/',
+                  'utils/': 'src/utils/',
+                  'types/': 'src/types/',
+                  'public/': 'public/',
+                  'assets/': 'public/assets/'
+                };
+              } else if (pathStrategy === 'vite-react') {
+                // Use Vite React path mapping
+                installOptions.pathMap = {
+                  'components/': 'src/components/',
+                  'ui/': 'src/components/ui/',
+                  'lib/': 'src/lib/',
+                  'hooks/': 'src/hooks/',
+                  'utils/': 'src/utils/',
+                  'types/': 'src/types/',
+                  'assets/': 'src/assets/'
+                };
+              }
+            }
+            
+            const componentInstallResult = await handleInstall(installOptions);
+            
+            // Aggregate results
+            allInstalledFiles.push(...(componentInstallResult.installed || []));
+            allSkippedFiles.push(...(componentInstallResult.skipped || []));
+            allOverwrittenFiles.push(...(componentInstallResult.overwritten || []));
+            allRenamedFiles.push(...(componentInstallResult.renamed || []));
+            
+            logger.debug(`Component ${componentId} installed successfully`, {
+              installed: (componentInstallResult.installed || []).length,
+              skipped: (componentInstallResult.skipped || []).length
+            });
+            
+          } catch (componentError) {
+            const errorMessage = componentError instanceof Error ? componentError.message : String(componentError);
+            logger.error(`Failed to install component ${componentId}`, { error: errorMessage });
+            throw new Error(`Failed to install component ${componentId}: ${errorMessage}`);
+          }
         }
+        
+        result.steps.install = {
+          success: true,
+          installed: allInstalledFiles,
+          skipped: allSkippedFiles,
+          overwritten: allOverwrittenFiles,
+          renamed: allRenamedFiles
+        };
+        
+      } else {
+        // This is a regular component - install directly
+        const installOptions: any = {
+          stageDir: result.steps.fetch.stageDir,
+          destRoot,
+          dryRun
+        };
+        
+        // Apply path mapping strategy
+        if (pathStrategy || pathMap) {
+          if (pathMap) {
+            installOptions.pathMap = pathMap;
+          } else if (pathStrategy === 'next-app') {
+            // Use Next.js App Router path mapping
+            installOptions.pathMap = {
+              'components/': 'src/components/',
+              'ui/': 'src/components/ui/',
+              'lib/': 'src/lib/',
+              'hooks/': 'src/hooks/',
+              'utils/': 'src/utils/',
+              'types/': 'src/types/',
+              'public/': 'public/',
+              'assets/': 'public/assets/'
+            };
+          } else if (pathStrategy === 'vite-react') {
+            // Use Vite React path mapping
+            installOptions.pathMap = {
+              'components/': 'src/components/',
+              'ui/': 'src/components/ui/',
+              'lib/': 'src/lib/',
+              'hooks/': 'src/hooks/',
+              'utils/': 'src/utils/',
+              'types/': 'src/types/',
+              'assets/': 'src/assets/'
+            };
+          }
+        }
+        
+        const installResult = await handleInstall(installOptions);
+        result.steps.install = {
+          success: true,
+          installed: installResult.installed,
+          skipped: installResult.skipped,
+          overwritten: installResult.overwritten,
+          renamed: installResult.renamed
+        };
       }
       
-      const installResult = await handleInstall(installOptions);
-      result.steps.install = {
-        success: true,
-        installed: installResult.installed,
-        skipped: installResult.skipped,
-        overwritten: installResult.overwritten,
-        renamed: installResult.renamed
-      };
       result.summary.successfulSteps++;
       
       logger.debug('Install completed successfully', { 
-        installed: installResult.installed?.length || 0,
-        skipped: installResult.skipped?.length || 0
+        installed: (result.steps.install.installed || []).length,
+        skipped: (result.steps.install.skipped || []).length,
+        overwritten: (result.steps.install.overwritten || []).length,
+        renamed: (result.steps.install.renamed || []).length
       });
       
     } catch (error) {
@@ -181,19 +296,21 @@ export async function executeWorkflow(options: WorkflowOptions): Promise<Workflo
       result.summary.errors.push(`Install failed: ${errorMessage}`);
       
       logger.error('Install step failed', { stageDir: result.steps.fetch.stageDir, error: errorMessage });
+      return result; // Cannot continue without install
     }
     
-    // Step 3: Text editing (if editPlan provided)
+    // Step 3: Apply text edits (brand customization)
     if (editPlan && Object.keys(editPlan).length > 0) {
-      logger.debug('Workflow Step 3: Text editing');
+      logger.debug('Workflow Step 3: Applying text edits');
       result.summary.totalSteps++;
       
       try {
-        const textEditResult = await handleTextEdit({
+        const textEditOptions: any = {
           destRoot,
-          plan: editPlan
-        });
+          ...editPlan
+        };
         
+        const textEditResult = await handleTextEdit(textEditOptions);
         result.steps.textEdit = {
           success: true,
           changedFiles: textEditResult.changedFiles,
@@ -215,53 +332,39 @@ export async function executeWorkflow(options: WorkflowOptions): Promise<Workflo
         result.summary.errors.push(`Text edit failed: ${errorMessage}`);
         
         logger.error('Text edit step failed', { destRoot, error: errorMessage });
+        // Continue execution - text edit is optional
       }
     }
     
-    // Step 4: Install dependencies (if autoDeps enabled and dependencies exist)
+    // Step 4: Install dependencies
     if (autoDeps && result.steps.fetch.meta?.dependencies?.length > 0) {
       logger.debug('Workflow Step 4: Installing dependencies');
       result.summary.totalSteps++;
       
       try {
+        const dependencies = result.steps.fetch.meta.dependencies;
+        
         // Detect package manager
-        const pmInfo = await detectPackageManager(destRoot);
-        if (!pmInfo) {
-          throw new Error('No package manager found');
-        }
+        const packageManager = await detectPackageManager(destRoot);
+        logger.debug('Detected package manager', { packageManager });
         
-        // Install main dependencies
-        const depsResult = await handleInstallDeps({
-          cwd: destRoot,
-          packages: result.steps.fetch.meta.dependencies,
-          pm: pmInfo.name
-        });
+        const installDepsOptions: any = {
+          destRoot,
+          packages: dependencies,
+          packageManager
+        };
         
+        const installDepsResult = await handleInstallDeps(installDepsOptions);
         result.steps.installDeps = {
           success: true,
-          pm: depsResult.pm,
-          installed: result.steps.fetch.meta.dependencies
+          installed: dependencies // Use the original dependencies list
         };
         result.summary.successfulSteps++;
         
-        logger.debug('Dependencies installed successfully', { 
-          pm: depsResult.pm,
-          packages: result.steps.fetch.meta.dependencies
+        logger.debug('Dependency installation completed successfully', { 
+          installed: dependencies.length,
+          packageManager: installDepsResult.pm
         });
-        
-        // Install peer dependencies if they exist
-        if (result.steps.fetch.meta.peerDependencies?.length > 0) {
-          logger.debug('Installing peer dependencies');
-          await handleInstallDeps({
-            cwd: destRoot,
-            packages: result.steps.fetch.meta.peerDependencies,
-            pm: pmInfo.name
-          });
-          
-          logger.debug('Peer dependencies installed successfully', { 
-            packages: result.steps.fetch.meta.peerDependencies
-          });
-        }
         
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -272,93 +375,31 @@ export async function executeWorkflow(options: WorkflowOptions): Promise<Workflo
         result.summary.failedSteps++;
         result.summary.errors.push(`Dependency installation failed: ${errorMessage}`);
         
-        logger.error('Dependency installation step failed', { 
-          destRoot, 
-          dependencies: result.steps.fetch.meta.dependencies,
-          error: errorMessage 
-        });
+        logger.error('Dependency installation step failed', { destRoot, dependencies: result.steps.fetch.meta.dependencies, error: errorMessage });
+        // Continue execution - dependency installation failure shouldn't stop the workflow
       }
     }
     
     // Determine overall success
     result.success = result.summary.failedSteps === 0;
     
-    logger.debug('Workflow completed', {
+    logger.debug('Workflow execution completed', {
       success: result.success,
       totalSteps: result.summary.totalSteps,
       successfulSteps: result.summary.successfulSteps,
       failedSteps: result.summary.failedSteps,
-      errors: result.summary.errors.length
+      errors: result.summary.errors
     });
     
     return result;
     
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error('Unexpected workflow error', { options, error: errorMessage });
+    logger.error('Workflow execution failed', { error: errorMessage });
     
-    result.summary.errors.push(`Unexpected error: ${errorMessage}`);
+    result.summary.errors.push(`Workflow failed: ${errorMessage}`);
+    result.success = false;
+    
     return result;
-  }
-}
-
-/**
- * Generate default edit plan for brand customization
- */
-export function generateBrandEditPlan(brand: string): {
-  include: string[];
-  exclude: string[];
-  replacements: Array<{
-    find?: string;
-    findRegex?: string;
-    replaceWith: string;
-  }>;
-  options: {
-    dryRun: boolean;
-    limitChangedFiles: number;
-    previewContextLines: number;
-  };
-} {
-  return {
-    include: ['**/*.tsx', '**/*.ts', '**/*.jsx', '**/*.js', '**/*.md', '**/*.json'],
-    exclude: ['node_modules/**', '.git/**', 'dist/**', 'build/**'],
-    replacements: [
-      { find: '{{BRAND}}', replaceWith: brand },
-      { find: '{{COMPANY}}', replaceWith: brand },
-      { find: '{{NAME}}', replaceWith: brand },
-      { find: 'Dooi', replaceWith: brand },
-      { find: 'dooi', replaceWith: brand.toLowerCase() }
-    ],
-    options: {
-      dryRun: false,
-      limitChangedFiles: 100,
-      previewContextLines: 3
-    }
-  };
-}
-
-/**
- * Validate workflow options
- */
-export function validateWorkflowOptions(options: WorkflowOptions): void {
-  if (!options.id || typeof options.id !== 'string') {
-    throw createError(ErrorCode.INVALID_INPUT, 
-      'Workflow ID is required',
-      { id: options.id }
-    );
-  }
-  
-  if (!options.destRoot || typeof options.destRoot !== 'string') {
-    throw createError(ErrorCode.INVALID_INPUT, 
-      'Destination root is required',
-      { destRoot: options.destRoot }
-    );
-  }
-  
-  if (options.pathStrategy && !['next-app', 'vite-react'].includes(options.pathStrategy)) {
-    throw createError(ErrorCode.INVALID_INPUT, 
-      'Invalid path strategy',
-      { pathStrategy: options.pathStrategy }
-    );
   }
 }

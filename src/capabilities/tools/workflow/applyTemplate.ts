@@ -5,7 +5,7 @@
 import { WorkflowInputSchema, type WorkflowInput, type WorkflowOutput } from '../../../adapters/mcp/schema.js';
 import { createError, ErrorCode } from '../../../core/errors.js';
 import { logger } from '../../../core/logger.js';
-import { stat } from 'fs/promises';
+import { stat, mkdir } from 'fs/promises';
 import { executeWorkflow, generateBrandEditPlan, validateWorkflowOptions } from '../../../core/workflow.js';
 
 export async function handleApplyTemplate(args: unknown): Promise<WorkflowOutput> {
@@ -18,18 +18,34 @@ export async function handleApplyTemplate(args: unknown): Promise<WorkflowOutput
     // Validate workflow options
     validateWorkflowOptions(input);
 
-    // Check if destination root exists
+    // Ensure destination root exists
     try {
       await stat(input.destRoot);
     } catch {
-      throw createError(ErrorCode.INVALID_INPUT, 
-        'Destination root directory does not exist',
-        { destRoot: input.destRoot }
-      );
+      // Directory doesn't exist, create it
+      try {
+        await mkdir(input.destRoot, { recursive: true });
+        logger.debug('Created destination directory', { destRoot: input.destRoot });
+      } catch (mkdirError) {
+        throw createError(ErrorCode.INVALID_INPUT, 
+          'Failed to create destination directory',
+          { destRoot: input.destRoot, error: mkdirError }
+        );
+      }
     }
 
     // Generate edit plan if brand is provided
     let editPlan = input.editPlan;
+    
+    // Handle empty edit plan object
+    if (editPlan && typeof editPlan === 'object' && 'include' in editPlan && (!editPlan.include || editPlan.include.length === 0)) {
+      editPlan = undefined;
+      logger.debug('Empty edit plan provided, treating as undefined');
+    } else if (editPlan && typeof editPlan === 'object' && !('include' in editPlan)) {
+      editPlan = undefined;
+      logger.debug('Empty edit plan object provided, treating as undefined');
+    }
+    
     if (input.brand && !editPlan) {
       editPlan = generateBrandEditPlan(input.brand);
       logger.debug('Generated brand edit plan', { brand: input.brand });

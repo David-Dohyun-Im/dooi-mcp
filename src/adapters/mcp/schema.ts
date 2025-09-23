@@ -181,7 +181,7 @@ export const WorkflowInputSchema = z.object({
       limitChangedFiles: numberPositive.optional(),
       previewContextLines: numberPositive.optional()
     }).optional()
-  }).optional(),
+  }).optional().or(z.object({})),
   autoDeps: booleanOptional
 });
 

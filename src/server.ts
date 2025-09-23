@@ -9,7 +9,8 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
   ListPromptsRequestSchema,
-  GetPromptRequestSchema
+  GetPromptRequestSchema,
+  InitializeRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 import { DooiTransport } from './adapters/mcp/transport.js';
 import { handleToolCall, tools } from './capabilities/tools/index.js';
@@ -26,9 +27,16 @@ const server = new Server(
   },
   {
     capabilities: {
-      tools: {},
-      resources: {},
-      prompts: {}
+      tools: {
+        listChanged: true
+      },
+      resources: {
+        subscribe: false,
+        listChanged: true
+      },
+      prompts: {
+        listChanged: true
+      }
     }
   }
 );
@@ -93,6 +101,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 });
+
+// Register initialization
+server.setRequestHandler(InitializeRequestSchema, async (request) => {
+  logger.debug('Server initialization request', request.params);
+  return {
+    protocolVersion: "2024-11-05",
+    capabilities: {
+      tools: {
+        listChanged: true
+      },
+      resources: {
+        subscribe: false,
+        listChanged: true
+      },
+      prompts: {
+        listChanged: true
+      }
+    },
+    serverInfo: {
+      name: 'dooi-mcp',
+      version: '1.0.0'
+    }
+  };
+});
+
+// Handle notifications
+(server as any).onnotification = async (notification: any) => {
+  logger.debug('Received notification:', notification.method);
+  if (notification.method === 'notifications/initialized') {
+    logger.debug('Client initialized notification received');
+  }
+};
 
 // Register resources
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
