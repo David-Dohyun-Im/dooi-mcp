@@ -1,0 +1,20 @@
+{
+  "name": "dooi-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for safely consuming dooi templates/components",
+  "author": "Sungho Park",
+  "license": "MIT",
+  "mcpVersion": "2024-11-05",
+  "capabilities": {
+    "tools": {},
+    "resources": {},
+    "prompts": {}
+  },
+  "commands": {
+    "start": {
+      "command": "node",
+      "args": ["dist/server.js"],
+      "env": {}
+    }
+  }
+}
