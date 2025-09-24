@@ -22,6 +22,27 @@ export interface PromptInfo {
 export function getDooiPrompts(): PromptInfo[] {
   return [
     {
+      name: 'getting-started',
+      description: '🚀 RECOMMENDED: Get started with dooi-ui - Perfect for beginners! This will guide you through your first template installation.',
+      arguments: [
+        {
+          name: 'projectType',
+          description: 'What type of project do you want to create? (landing page, dashboard, blog, etc.)',
+          required: true
+        },
+        {
+          name: 'framework',
+          description: 'Which framework do you prefer? (next, vite, nuxt, etc.)',
+          required: false
+        },
+        {
+          name: 'projectName',
+          description: 'What would you like to name your project?',
+          required: false
+        }
+      ]
+    },
+    {
       name: 'select-component',
       description: 'Guide the user to select a dooi component based on their needs',
       arguments: [
@@ -115,6 +136,9 @@ export async function executePrompt(name: string, args: Record<string, any>): Pr
   logger.debug('Executing prompt', { name, args });
   
   switch (name) {
+    case 'getting-started':
+      return await executeGettingStartedPrompt(args);
+    
     case 'select-component':
       return await executeSelectComponentPrompt(args);
     
@@ -129,6 +153,96 @@ export async function executePrompt(name: string, args: Record<string, any>): Pr
     
     default:
       throw new Error(`Unknown prompt: ${name}`);
+  }
+}
+
+/**
+ * Execute getting started prompt
+ */
+async function executeGettingStartedPrompt(args: Record<string, any>): Promise<string> {
+  const { projectType, framework, projectName } = args;
+  
+  try {
+    // Get available templates
+    const listResult = await handleList({});
+    const templates = listResult.items.filter(item => item.type === 'template');
+    
+    if (templates.length === 0) {
+      return `# Welcome to dooi-ui! 🚀\n\nUnfortunately, no templates are currently available. Please check if dooi-ui is properly installed and accessible.`;
+    }
+    
+    let prompt = `# Welcome to dooi-ui! 🚀\n\n`;
+    prompt += `You're about to create your first project with dooi-ui. This is the **RECOMMENDED** way to get started!\n\n`;
+    
+    prompt += `## Your Project Details\n\n`;
+    prompt += `- **Project Type**: ${projectType}\n`;
+    if (framework) prompt += `- **Framework**: ${framework}\n`;
+    if (projectName) prompt += `- **Project Name**: ${projectName}\n\n`;
+    
+    prompt += `## Why Use Templates? 🎯\n\n`;
+    prompt += `Templates are perfect for beginners because they:\n`;
+    prompt += `- ✅ Include complete project structure\n`;
+    prompt += `- ✅ Have all dependencies pre-configured\n`;
+    prompt += `- ✅ Include best practices and examples\n`;
+    prompt += `- ✅ Are ready to run immediately\n`;
+    prompt += `- ✅ Support automatic customization\n\n`;
+    
+    prompt += `## Available Templates (${templates.length} total)\n\n`;
+    
+    for (const template of templates) {
+      prompt += `- **${template.id}**: ${template.description}\n`;
+    }
+    
+    prompt += `\n## Recommendations\n\n`;
+    
+    // Provide recommendations based on project type
+    const recommendations = getTemplateRecommendations(projectType, framework, undefined, templates);
+    if (recommendations.length > 0) {
+      prompt += `Based on your project type, I recommend:\n\n`;
+      for (const rec of recommendations) {
+        prompt += `- **${rec.id}**: ${rec.description}\n`;
+      }
+      prompt += `\n`;
+    }
+    
+    prompt += `## Next Steps - Apply Your First Template! 🚀\n\n`;
+    prompt += `To create your project, use the **RECOMMENDED** workflow tool:\n\n`;
+    prompt += `\`\`\`javascript\n`;
+    prompt += `await dooi.workflow.applyTemplate({\n`;
+    prompt += `  id: "template-id", // Choose from the templates above\n`;
+    prompt += `  destRoot: "/path/to/your/project", // Where to create your project\n`;
+    prompt += `  brand: "${projectName || 'YourBrand'}", // Your brand name\n`;
+    prompt += `  pathStrategy: "${framework === 'vite' ? 'vite-react' : 'next-app'}", // Framework strategy\n`;
+    prompt += `  autoDeps: true // Automatically install dependencies\n`;
+    prompt += `});\n`;
+    prompt += `\`\`\`\n\n`;
+    
+    prompt += `## What Happens Next? ✨\n\n`;
+    prompt += `1. **Template Download**: The template will be fetched from dooi-ui\n`;
+    prompt += `2. **File Installation**: All template files will be copied to your project\n`;
+    prompt += `3. **Brand Customization**: Your brand name will be applied throughout\n`;
+    prompt += `4. **Dependency Installation**: All required packages will be installed\n`;
+    prompt += `5. **Ready to Go**: Your project will be ready to run!\n\n`;
+    
+    prompt += `## Alternative: Individual Components ⚡\n\n`;
+    prompt += `If you prefer to add individual components to an existing project, you can use:\n`;
+    prompt += `\`\`\`javascript\n`;
+    prompt += `await dooi.workflow.applyComponent({\n`;
+    prompt += `  id: "component-id",\n`;
+    prompt += `  destRoot: "/path/to/existing/project"\n`;
+    prompt += `});\n`;
+    prompt += `\`\`\`\n\n`;
+    
+    prompt += `## Need Help? 🤝\n\n`;
+    prompt += `- Use \`dooi_list\` to see all available templates and components\n`;
+    prompt += `- Use \`dooi_workflow_applyTemplate\` for full project templates (RECOMMENDED)\n`;
+    prompt += `- Use \`dooi_workflow_applyComponent\` for individual components\n`;
+    
+    return prompt;
+    
+  } catch (error) {
+    logger.error('Failed to execute getting-started prompt', error);
+    return `# Welcome to dooi-ui! 🚀\n\nError retrieving templates: ${error instanceof Error ? error.message : String(error)}\n\nPlease try again or check if dooi-ui is properly installed.`;
   }
 }
 

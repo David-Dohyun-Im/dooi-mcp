@@ -5,7 +5,8 @@
 import { InstallDepsInputSchema, type InstallDepsInput, type InstallDepsOutput } from '../../adapters/mcp/schema.js';
 import { createError, ErrorCode } from '../../core/errors.js';
 import { logger } from '../../core/logger.js';
-import { stat } from 'fs/promises';
+import { stat, readFile } from 'fs/promises';
+import { join } from 'path';
 import { installPackages } from '../../core/install.js';
 import { detectPackageManager } from '../../core/pm.js';
 
@@ -34,6 +35,25 @@ export async function handleInstallDeps(args: unknown): Promise<InstallDepsOutpu
       );
     }
     
+    // Enhance packages with smart suggestions based on component metadata
+    let enhancedPackages = input.packages;
+    try {
+      // Try to find meta.json in the project to get component context
+      const metaPath = join(input.cwd, 'meta.json');
+      const metaContent = await readFile(metaPath, 'utf8');
+      const meta = JSON.parse(metaContent);
+      
+      // Add smart package suggestions based on component metadata
+      enhancedPackages = enhancePackagesWithMetadata(input.packages, meta);
+      logger.debug('Enhanced packages with metadata', { 
+        original: input.packages.length,
+        enhanced: enhancedPackages.length 
+      });
+    } catch {
+      // No meta.json found, use original packages
+      logger.debug('No meta.json found, using original packages');
+    }
+    
     // Detect package manager if not specified
     let packageManager = input.pm;
     if (!packageManager) {
@@ -51,7 +71,7 @@ export async function handleInstallDeps(args: unknown): Promise<InstallDepsOutpu
     // Install packages
     const result = await installPackages({
       cwd: input.cwd,
-      packages: input.packages,
+      packages: enhancedPackages,
       pm: packageManager,
       flags: input.flags || [],
       timeoutMs: 30000
@@ -102,4 +122,68 @@ export async function handleInstallDeps(args: unknown): Promise<InstallDepsOutpu
       originalError: error instanceof Error ? error.message : String(error)
     });
   }
+}
+
+/**
+ * Enhance packages with smart suggestions based on component metadata
+ */
+function enhancePackagesWithMetadata(originalPackages: string[], meta: any): string[] {
+  const enhanced = [...originalPackages];
+  
+  // Add smart package suggestions based on component metadata
+  if (meta.tags) {
+    // Add tag-specific packages
+    if (meta.tags.includes('3d')) {
+      // Ensure 3D packages are included
+      const threePackages = ['three', '@react-three/fiber', '@react-three/drei'];
+      threePackages.forEach(pkg => {
+        if (!enhanced.includes(pkg)) {
+          enhanced.push(pkg);
+        }
+      });
+    }
+    
+    if (meta.tags.includes('animation')) {
+      // Ensure animation packages are included
+      const animationPackages = ['framer-motion'];
+      animationPackages.forEach(pkg => {
+        if (!enhanced.includes(pkg)) {
+          enhanced.push(pkg);
+        }
+      });
+    }
+    
+    if (meta.tags.includes('interactive')) {
+      // Add interactive-specific packages
+      const interactivePackages = ['@use-gesture/react'];
+      interactivePackages.forEach(pkg => {
+        if (!enhanced.includes(pkg)) {
+          enhanced.push(pkg);
+        }
+      });
+    }
+  }
+  
+  // Add packages based on complexity
+  if (meta.complexity === 'advanced') {
+    // Add development packages for advanced components
+    const devPackages = ['@types/three'];
+    devPackages.forEach(pkg => {
+      if (!enhanced.includes(pkg)) {
+        enhanced.push(pkg);
+      }
+    });
+  }
+  
+  // Add packages based on dependencies from metadata
+  if (meta.dependencies && Array.isArray(meta.dependencies)) {
+    meta.dependencies.forEach((dep: string) => {
+      if (!enhanced.includes(dep)) {
+        enhanced.push(dep);
+      }
+    });
+  }
+  
+  // Remove duplicates
+  return [...new Set(enhanced)];
 }

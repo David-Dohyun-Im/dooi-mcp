@@ -18,21 +18,55 @@ import { handleApplyTemplate } from './workflow/applyTemplate.js';
 
 // Tool registry
 export const toolHandlers = new Map<string, (args: unknown) => Promise<unknown>>([
-  ['dooi.list', handleList],
-  ['dooi.fetch', handleFetch],
-  ['dooi.resolve.uses', handleResolveUses],
-  ['dooi.fetchBatch', handleFetchBatch],
-  ['dooi.install', handleInstall],
-  ['dooi.textEdit', handleTextEdit],
-  ['dooi.installDeps', handleInstallDeps],
-  ['dooi.workflow.applyComponent', handleApplyComponent],
-  ['dooi.workflow.applyTemplate', handleApplyTemplate]
+  ['dooi_list', handleList],
+  ['dooi_fetch', handleFetch],
+  ['dooi_resolve_uses', handleResolveUses],
+  ['dooi_fetchBatch', handleFetchBatch],
+  ['dooi_install', handleInstall],
+  ['dooi_textEdit', handleTextEdit],
+  ['dooi_installDeps', handleInstallDeps],
+  ['dooi_workflow_applyComponent', handleApplyComponent],
+  ['dooi_workflow_applyTemplate', handleApplyTemplate]
 ]);
 
 // Tool definitions for MCP server
 export const tools: Tool[] = [
   {
-    name: 'dooi.list',
+    name: 'dooi_workflow_applyTemplate',
+    description: '🚀 RECOMMENDED: One-shot template installation workflow - Perfect for getting started! Installs complete templates with automatic dependency management and text customization. Use this for full project templates.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Template ID' },
+        destRoot: { type: 'string', description: 'Destination project root' },
+        brand: { type: 'string', description: 'Brand name for text replacements' },
+        pathStrategy: { type: 'string', enum: ['next-app', 'vite-react'], description: 'Path strategy' },
+        pathMap: { type: 'object', description: 'Custom path mapping' },
+        editPlan: { type: 'object', description: 'Text edit plan' },
+        autoDeps: { type: 'boolean', description: 'Auto-install dependencies' }
+      },
+      required: ['id', 'destRoot']
+    }
+  },
+  {
+    name: 'dooi_workflow_applyComponent',
+    description: '⚡ FAST: One-shot component installation workflow - Great for individual UI components. Use this for single components or small UI elements.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Component ID' },
+        destRoot: { type: 'string', description: 'Destination project root' },
+        brand: { type: 'string', description: 'Brand name for text replacements' },
+        pathStrategy: { type: 'string', enum: ['next-app', 'vite-react'], description: 'Path strategy' },
+        pathMap: { type: 'object', description: 'Custom path mapping' },
+        editPlan: { type: 'object', description: 'Text edit plan' },
+        autoDeps: { type: 'boolean', description: 'Auto-install dependencies' }
+      },
+      required: ['id', 'destRoot']
+    }
+  },
+  {
+    name: 'dooi_list',
     description: 'Enumerate available templates/components from dooi-ui',
     inputSchema: {
       type: 'object',
@@ -41,7 +75,7 @@ export const tools: Tool[] = [
     }
   },
   {
-    name: 'dooi.fetch',
+    name: 'dooi_fetch',
     description: 'Fetch a template/component into a staging directory',
     inputSchema: {
       type: 'object',
@@ -60,7 +94,7 @@ export const tools: Tool[] = [
     }
   },
   {
-    name: 'dooi.resolve.uses',
+    name: 'dooi_resolve_uses',
     description: 'Derive additional required component IDs from staging directory',
     inputSchema: {
       type: 'object',
@@ -71,7 +105,7 @@ export const tools: Tool[] = [
     }
   },
   {
-    name: 'dooi.fetchBatch',
+    name: 'dooi_fetchBatch',
     description: 'Fetch multiple components/templates at once',
     inputSchema: {
       type: 'object',
@@ -86,7 +120,7 @@ export const tools: Tool[] = [
     }
   },
   {
-    name: 'dooi.install',
+    name: 'dooi_install',
     description: 'Copy files from staging directory to project with preview',
     inputSchema: {
       type: 'object',
@@ -103,7 +137,7 @@ export const tools: Tool[] = [
     }
   },
   {
-    name: 'dooi.textEdit',
+    name: 'dooi_textEdit',
     description: 'Perform text-only replacements preserving code structure',
     inputSchema: {
       type: 'object',
@@ -142,7 +176,7 @@ export const tools: Tool[] = [
     }
   },
   {
-    name: 'dooi.installDeps',
+    name: 'dooi_installDeps',
     description: 'Install npm packages using specified package manager',
     inputSchema: {
       type: 'object',
@@ -155,40 +189,6 @@ export const tools: Tool[] = [
       required: ['cwd', 'packages']
     }
   },
-  {
-    name: 'dooi.workflow.applyComponent',
-    description: 'One-shot component installation workflow',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Component ID' },
-        destRoot: { type: 'string', description: 'Destination project root' },
-        brand: { type: 'string', description: 'Brand name for text replacements' },
-        pathStrategy: { type: 'string', enum: ['next-app', 'vite-react'], description: 'Path strategy' },
-        pathMap: { type: 'object', description: 'Custom path mapping' },
-        editPlan: { type: 'object', description: 'Text edit plan' },
-        autoDeps: { type: 'boolean', description: 'Auto-install dependencies' }
-      },
-      required: ['id', 'destRoot']
-    }
-  },
-  {
-    name: 'dooi.workflow.applyTemplate',
-    description: 'One-shot template installation workflow',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string', description: 'Template ID' },
-        destRoot: { type: 'string', description: 'Destination project root' },
-        brand: { type: 'string', description: 'Brand name for text replacements' },
-        pathStrategy: { type: 'string', enum: ['next-app', 'vite-react'], description: 'Path strategy' },
-        pathMap: { type: 'object', description: 'Custom path mapping' },
-        editPlan: { type: 'object', description: 'Text edit plan' },
-        autoDeps: { type: 'boolean', description: 'Auto-install dependencies' }
-      },
-      required: ['id', 'destRoot']
-    }
-  }
 ];
 
 export async function handleToolCall(name: string, args: unknown): Promise<unknown> {

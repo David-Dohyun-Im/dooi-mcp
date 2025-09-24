@@ -5,7 +5,8 @@
 import { InstallInputSchema, type InstallInput, type InstallOutput } from '../../adapters/mcp/schema.js';
 import { createError, ErrorCode } from '../../core/errors.js';
 import { logger } from '../../core/logger.js';
-import { stat } from 'fs/promises';
+import { stat, readFile } from 'fs/promises';
+import { join } from 'path';
 import { createCopyPlan, executeCopyPlan } from '../../core/copy.js';
 import { getNextAppPathMapping } from '../../core/config/pathStrategies/next-app.js';
 import { DEFAULT_INCLUDE_PATTERNS, DEFAULT_EXCLUDE_PATTERNS } from '../../core/config/defaults.js';
@@ -36,9 +37,20 @@ export async function handleInstall(args: unknown): Promise<InstallOutput> {
     // Apply path mapping strategy if not provided
     let pathMap = input.pathMap;
     if (!pathMap) {
-      // Default to Next.js App Router strategy
-      pathMap = getNextAppPathMapping();
-      logger.debug('Applied default Next.js App Router path mapping');
+      // Try to read meta.json to determine optimal path mapping
+      try {
+        const metaPath = join(input.stageDir, 'meta.json');
+        const metaContent = await readFile(metaPath, 'utf8');
+        const meta = JSON.parse(metaContent);
+        
+        // Use smart path mapping based on component metadata
+        pathMap = generateSmartPathMapping(meta);
+        logger.debug('Applied smart path mapping based on metadata', { pathMap });
+      } catch {
+        // Fallback to default Next.js App Router strategy
+        pathMap = getNextAppPathMapping();
+        logger.debug('Applied default Next.js App Router path mapping');
+      }
     }
     
     // Create copy plan
@@ -92,4 +104,45 @@ export async function handleInstall(args: unknown): Promise<InstallOutput> {
       }
     );
   }
+}
+
+/**
+ * Generate smart path mapping based on component metadata
+ */
+function generateSmartPathMapping(meta: any): Record<string, string> {
+  const basePathMap: Record<string, string> = {
+    'components/': 'src/components/',
+    'ui/': 'src/components/ui/',
+    'lib/': 'src/lib/',
+    'hooks/': 'src/hooks/',
+    'utils/': 'src/utils/',
+    'types/': 'src/types/',
+    'public/': 'public/',
+    'assets/': 'public/assets/'
+  };
+  
+  // Customize based on component category
+  if (meta.category === 'Hero') {
+    basePathMap['Hero/'] = 'src/components/Hero/';
+  } else if (meta.category === 'Cards') {
+    basePathMap['Cards/'] = 'src/components/Cards/';
+  } else if (meta.category === 'ui') {
+    basePathMap['ui/'] = 'src/components/ui/';
+  }
+  
+  // Add specific mappings based on tags
+  if (meta.tags) {
+    if (meta.tags.includes('hero')) {
+      basePathMap['components/hero/'] = 'src/components/Hero/';
+    }
+    if (meta.tags.includes('cards')) {
+      basePathMap['components/cards/'] = 'src/components/Cards/';
+    }
+    if (meta.tags.includes('3d')) {
+      basePathMap['shaders/'] = 'src/shaders/';
+      basePathMap['textures/'] = 'public/textures/';
+    }
+  }
+  
+  return basePathMap;
 }

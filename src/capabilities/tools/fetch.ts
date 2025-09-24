@@ -82,6 +82,23 @@ export async function handleFetch(args: unknown): Promise<FetchOutput> {
       await writeFile(fullPath, meta.codeBlock, 'utf8');
       files.push(componentPath);
       
+      // Create enhanced meta.json file with rich metadata
+      const metaJson = {
+        id: meta.id,
+        title: meta.title,
+        description: meta.description,
+        dependencies: meta.dependencies || [],
+        peerDependencies: meta.peerDependencies || [],
+        uses: meta.uses || [],
+        category: getCategoryFromId(input.id),
+        tags: getTagsFromMetadata(meta),
+        complexity: getComplexityFromMetadata(meta)
+      };
+      
+      const metaPath = join(stageDir, 'meta.json');
+      await writeFile(metaPath, JSON.stringify(metaJson, null, 2), 'utf8');
+      files.push('meta.json');
+      
       // Create a package.json if dependencies exist
       if (meta.dependencies && meta.dependencies.length > 0) {
         const packageJson = {
@@ -291,4 +308,68 @@ function getComponentPath(id: string): string {
     // Simple component names go to components/
     return `components/${id}.tsx`;
   }
+}
+
+/**
+ * Get category from component ID
+ */
+function getCategoryFromId(id: string): string {
+  if (id.startsWith('ui/')) {
+    return 'ui';
+  } else if (id.includes('/')) {
+    return id.split('/')[0]!;
+  }
+  return 'component';
+}
+
+/**
+ * Generate tags from metadata
+ */
+function getTagsFromMetadata(meta: any): string[] {
+  const tags: string[] = [];
+  
+  // Add tags based on dependencies
+  if (meta.dependencies) {
+    if (meta.dependencies.includes('three') || meta.dependencies.includes('@react-three/fiber')) {
+      tags.push('3d');
+    }
+    if (meta.dependencies.includes('framer-motion')) {
+      tags.push('animation');
+    }
+  }
+  
+  // Add tags based on description
+  if (meta.description) {
+    const desc = meta.description.toLowerCase();
+    if (desc.includes('hero')) tags.push('hero');
+    if (desc.includes('background')) tags.push('background');
+    if (desc.includes('interactive')) tags.push('interactive');
+    if (desc.includes('grid')) tags.push('grid');
+    if (desc.includes('card')) tags.push('cards');
+    if (desc.includes('transition')) tags.push('transitions');
+    if (desc.includes('morphing') || desc.includes('fluid')) tags.push('morphing');
+    if (desc.includes('lava')) tags.push('lava-lamp');
+  }
+  
+  // Add tags based on uses components
+  if (meta.uses && meta.uses.length > 0) {
+    tags.push('composite');
+  }
+  
+  return tags;
+}
+
+/**
+ * Determine complexity from metadata
+ */
+function getComplexityFromMetadata(meta: any): string {
+  if (meta.uses && meta.uses.length > 0) {
+    return 'advanced';
+  }
+  
+  if (meta.dependencies && meta.dependencies.length > 2) {
+    return 'intermediate';
+  }
+  
+  return 'basic';
 }
